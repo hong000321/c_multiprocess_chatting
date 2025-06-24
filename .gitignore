@@ -1,0 +1,12 @@
+
+
+
+
+# 리눅스 커널 제외
+etc_linux_kernel_git
+
+# 생성되는 파일 제외
+## 바이너리
+*.out
+*.txt
+*.raw
