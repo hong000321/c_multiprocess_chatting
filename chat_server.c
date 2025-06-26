@@ -209,9 +209,9 @@ int func(char *command){
     int room_index;
     switch (cmd.func_num1)
     {
-    case CMD_ROBBY_LOGIN:
+    case CMD_ROBBY_LOGIN:       // 로비에서 로그인 커맨드
 #if LOGIN
-            for(int i=0; i<nclient ; i++){
+        for(int i=0; i<nclient ; i++){
             if((!strcmp(clients[i].name, cmd.str1)) && (!strcmp(clients[i].pass, cmd.str2))){
                 dprint("login success : name(%s) pass(%s)\n",clients[i].name, clients[i].pass);
                 send_cmd.func_num2 = SUCCESS;
@@ -246,7 +246,7 @@ int func(char *command){
         
 #endif
         break;
-    case CMD_ROOM_ADD:
+    case CMD_ROOM_ADD:      // 로비에서 방 추가 커맨드
         room_index = find_room_by_name(rooms, cmd.str1);
         dprint("room_index = %d\n",room_index);
         if(room_index < 0){
@@ -269,10 +269,10 @@ int func(char *command){
         }
         send_command(clients[cmd.client_id].pipe, clients[cmd.client_id].pid, send_cmd);
         break;
-    case CMD_ROOM_RM:
+    case CMD_ROOM_RM:       // 로비에서 방 제거 커맨드
         /* code */
         break;
-    case CMD_ROOM_JOIN:
+    case CMD_ROOM_JOIN:     // 로비에서 방 참가 커맨드
         room_index = find_room_by_name(rooms, cmd.str1);
         if(room_index < 0){
             send_cmd.func_num2 = FAIL;
@@ -293,10 +293,10 @@ int func(char *command){
         }
         send_command(clients[cmd.client_id].pipe, clients[cmd.client_id].pid, send_cmd);
         break;
-    case CMD_ROOM_PASS:
+    case CMD_ROOM_PASS:     // ????
         /* code */
         break;
-    case CMD_ROOM_LEAVE:
+    case CMD_ROOM_LEAVE:    // 방에서 로비로 나가기 커맨드
         if(clients[cmd.client_id].roomId==0){
             send_cmd.func_num2 = FAIL;
             strcpy(send_cmd.str1, "방 나가기 실패 (로비입니다).");
@@ -309,20 +309,21 @@ int func(char *command){
         }
         send_command(clients[cmd.client_id].pipe, clients[cmd.client_id].pid, send_cmd);
         break;
-    case CMD_ROOM_LIST:
+    case CMD_ROOM_LIST:     // 로비에서 방 리스트 확인 커맨드
         /* code */
         break;
-    case CMD_ROOM_USERS:
+    case CMD_ROOM_USERS:    // 방에서 유저 수 확인 커맨드
         /* code */
         break;
-    case CMD_SEND_ROOM:
+    case CMD_SEND_ROOM:     // 채팅 브로드캐스팅 커맨드
         dprint("start broadcast!!! \n");
         broadcastChat(&(clients[cmd.client_id]), rooms, cmd);
         break;
-    case CMD_SEND_WHISPER:
+    case CMD_SEND_WHISPER:  // 채팅 귓속말 커맨드
         /* code */
         break;
-    default:
+    default:                // 에러
+        eprint("unkown command!!!! \n");
         break;
     }
 }
