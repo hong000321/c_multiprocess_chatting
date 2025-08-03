@@ -10,22 +10,24 @@
 enum command_e{
     CMD_NULL,           // 0
     CMD_ROBBY_LOGIN,    // 1
+    // ROOM
     CMD_ROOM_ADD,       // 2
     CMD_ROOM_RM,        // 3
     CMD_ROOM_JOIN,      // 4
-    CMD_ROOM_PASS,      // 5
-    CMD_ROOM_LEAVE,     // 6
-    CMD_ROOM_LIST,      // 7
-    CMD_ROOM_USERS,     // 8
-    CMD_SEND_ROOM,      // 9
-    CMD_SEND_WHISPER,   // 10
-    CMD_EXIT,           // 11
-    CMD_CHANGE_ID,      // 12
-    SUCCESS,            // 13
-    CONTINUE,           // 14
-    END,                // 15
-    FAIL,               // 16
-    CMD_ROOM_HELP,      // 17
+    CMD_ROOM_LEAVE,     // 5
+    CMD_ROOM_LIST,      // 6
+    CMD_ROOM_USERS,     // 7
+    // CHAT
+    CMD_ROOM_SEND,      // 8
+    CMD_WHISPER,        // 9
+    // ETC
+    CMD_EXIT,           // 10
+    CMD_CHANGE_ID,      // 11  자식 프로세스의 ID를 변경하기 위한 커맨드, client에 전달되지는 않음
+    SUCCESS,            // 12
+    CONTINUE,           // 13
+    END,                // 14
+    FAIL,               // 15
+    CMD_ROOM_HELP,      // 16
 };
 
 struct command_s{

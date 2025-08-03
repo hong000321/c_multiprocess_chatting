@@ -17,6 +17,8 @@ void init_parent(){
     for(int i=0; i<MAX_ROOM; i++){
         g_clients[i].id = -1;
     }
+    g_rooms[0].id = 0;
+    strcpy(g_rooms->name, "lobby");
     g_room_num++;
 }
 
@@ -104,20 +106,25 @@ int send_command(int fd, int pid, struct command_s cmd){
 }
 
 int broadcastChat(struct command_s cmd){
+    dprint("start broadcast!!! cid(%d)\n",cmd.cid);
     struct client_s *from_client = &g_clients[find_client_index_by_id(cmd.cid)];
-    if(from_client->roomId==0){
-        eprint("is lobby(%s)\n",from_client->name);
-        return -1;
-    }
-    int room_index = find_room_by_id(g_rooms,from_client->roomId);
-    dprint("from(%d) room_index(%d), nclients(%d), strBuf(%s)\n",from_client->id,room_index, g_rooms[room_index].nclients, cmd.str2);
     struct command_s ret_command;
     char cmd_str[BUFSIZ];
     ret_command.cid = from_client->id;
     ret_command.func_num1 = cmd.func_num1;
     ret_command.func_num2 = SUCCESS;
+    if(from_client->roomId==0){
+        eprint("is lobby(%s)\n",from_client->name);
+        sprintf(ret_command.str1, "현재 로비에 있습니다. 방으로 이동해 주세요.");
+        send_command(from_client->pipe[1], from_client->pid, ret_command);
+        return -1;
+    }
+    int room_index = find_room_by_id(g_rooms,from_client->roomId);
+    dprint("from(%d) room_index(%d), nclients(%d), strBuf(%s)\n",from_client->id,room_index, g_rooms[room_index].nclients, cmd.str2);
+    
+    
     strcpy(ret_command.str1,from_client->name);
-    strcpy(ret_command.str2,cmd.str2);
+    strcpy(ret_command.str2,cmd.str1);
     pack_command(ret_command,cmd_str,BUFSIZ);
 
 
@@ -132,7 +139,8 @@ int broadcastChat(struct command_s cmd){
 }
 
 
-int cmd_login(const char *name, const char *pass, int cid){
+int cmd_login(const char *name, const char *pass, int cid){ // cid 는 접속한 client와 server의 child가 연결된 시점에 저장된 id
+    dprint("CMD_ROBBY_LOGIN\n");
     int ret = -1;
     struct command_s send_cmd;
     int client_index = find_client_index_by_id(cid);
@@ -142,10 +150,17 @@ int cmd_login(const char *name, const char *pass, int cid){
     ret = 0;
     
     for(int i=0; i<MAX_USER ; i++){
-        if(g_clients[i].id < 0){
+        if(g_clients[i].id < 0){ // 사용하지 않는 클라이언트
             continue;
         }
-        if(!strcmp(g_clients[i].name, name) && !strcmp(g_clients[i].pass, pass)){
+        if(!strcmp(g_clients[i].name, name) && !strcmp(g_clients[i].pass, pass)){ // 기존에 있는 ID/PASS와 비교해서 일치하면
+            if(g_clients[i].id >= 0){
+                iprint("login failed : 이미 접속중인 유저입니다.\n");
+                send_cmd.func_num2 = FAIL;
+                strcpy(send_cmd.str1, "이미 접속중인 유저입니다.");
+                ret = -1;
+                break;
+            }
             g_clients[i].id = cid;
             g_clients[i].pid = g_clients[client_index].pid;
             g_clients[i].pipe[0] = g_clients[client_index].pipe[0];
@@ -161,17 +176,17 @@ int cmd_login(const char *name, const char *pass, int cid){
             send_cmd.func_num2 = SUCCESS;
             ret = 0;
             break;
-        }else if(!strcmp(g_clients[i].name, name)){
+        }else if(!strcmp(g_clients[i].name, name)){ // ID만 일치하면
             iprint("login fail : name(%s) pass(%s)\n",g_clients[i].name, g_clients[i].pass);
             send_cmd.func_num2 = FAIL;
             strcpy(send_cmd.str1, "이미 존재하는 이름입니다.");
             ret = -1;
             break;
-        }else{
+        }else{ // ID/PASS 둘 다 일치 하지 않으면 회원가입으로 간주
             ret = 1;
         }
     }
-    if(ret == 1){
+    if(ret == 1){  // 회원가입 : ID/PASS 둘 다 일치 하지 않으면 회원가입으로 간주
         send_cmd.func_num2 = SUCCESS;
         strncpy(g_clients[client_index].name, name, MAX_NAME-1);
         strncpy(g_clients[client_index].pass, pass, MAX_NAME-1);
@@ -185,6 +200,7 @@ int cmd_login(const char *name, const char *pass, int cid){
 }
 
 int cmd_room_add(const char *room_name, const char *room_pass, int cid){
+    dprint("CMD_ROOM_ADD\n");
     int ret = 0;
     struct command_s send_cmd;
     int client_index = find_client_index_by_id(cid);
@@ -207,12 +223,23 @@ int cmd_room_add(const char *room_name, const char *room_pass, int cid){
             ret = -1;
         }else{
             send_cmd.func_num2 = SUCCESS;
-            strcpy(send_cmd.str1, "방을 생성합니다.");
-            iprint("방을 생성합니다.\n   req-user: %s \n   req-room: %s\n", g_clients[client_index].name, room_name);
+
             g_rooms[room_index].id = (g_room_num++);
             strncpy(g_rooms[room_index].name, room_name, 99);
-            strncpy(g_rooms[room_index].pass, room_pass, 99);
-            g_rooms[room_index].type = 1; // 비밀방
+            if(strcmp(room_pass,"")){
+                iprint("비밀방을 생성합니다.\n   req-user: %s \n   req-room: %s\n", g_clients[client_index].name, room_name);
+                strcpy(send_cmd.str1, "비밀방을 생성합니다.");
+                strcpy(send_cmd.str2, room_name);
+                strncpy(g_rooms[room_index].pass, room_pass, 99);
+                g_rooms[room_index].type = 1; // 비밀방
+            }else{
+                iprint("공개방을 생성합니다.\n   req-user: %s \n   req-room: %s\n", g_clients[client_index].name, room_name);
+                strcpy(send_cmd.str1, "공개방을 생성합니다.");
+                strcpy(send_cmd.str2, room_name);
+                strncpy(g_rooms[room_index].pass, room_pass, 99);
+                g_rooms[room_index].type = 0; // 공개방
+            }
+            
             ret = 0;
         }
     }
@@ -221,6 +248,7 @@ int cmd_room_add(const char *room_name, const char *room_pass, int cid){
 }
 
 int cmd_room_rm(const char *room_name, const char *room_pass, int cid){
+    dprint("CMD_ROOM_RM\n");
     int ret = 0;
     struct command_s send_cmd;
     int client_index = find_client_index_by_id(cid);
@@ -245,6 +273,11 @@ int cmd_room_rm(const char *room_name, const char *room_pass, int cid){
         send_cmd.func_num2 = SUCCESS;
         strcpy(send_cmd.str1, "방을 제거합니다.");
         iprint("방을 제거합니다.\n   req-user: %s \n   req-room: %s\n", g_clients[client_index].name, room_name);
+        for(int i=0; i<MAX_USER; i++){
+            if(g_rooms[room_index].clients[i]){
+                g_rooms[room_index].clients[i]->roomId = -1; // 유저 강퇴
+            }
+        }
         g_rooms[room_index].id = -1; // 방 제거
         ret = 0;
     }
@@ -253,6 +286,7 @@ int cmd_room_rm(const char *room_name, const char *room_pass, int cid){
 }
 
 int cmd_room_join(const char *room_name, const char *room_pass, int cid){
+    dprint("CMD_ROOM_JOIN\n");
     int ret = 0;
     struct command_s send_cmd;
     int client_index = find_client_index_by_id(cid);
@@ -273,7 +307,7 @@ int cmd_room_join(const char *room_name, const char *room_pass, int cid){
         ret = -1;
     }else{
         send_cmd.func_num2 = SUCCESS;
-        strcpy(send_cmd.str1, "방에 참가합니다.");
+        sprintf(send_cmd.str1, "방에 참가합니다[%s].",room_name);
         iprint("방에 참가합니다.\n   req-user: %s \n   req-room: %s\n", g_clients[client_index].name, room_name);
         g_rooms[room_index].clients[g_rooms[room_index].nclients++] = &g_clients[client_index];
         g_clients[client_index].roomId = g_rooms[room_index].id;
@@ -284,6 +318,7 @@ int cmd_room_join(const char *room_name, const char *room_pass, int cid){
 }
 
 int cmd_room_leave(int cid){
+    dprint("CMD_ROOM_LEAVE\n");
     int ret = 0;
     struct command_s send_cmd;
     int client_index = find_client_index_by_id(cid);
@@ -295,6 +330,11 @@ int cmd_room_leave(int cid){
         send_cmd.func_num2 = FAIL;
         strcpy(send_cmd.str1, "존재하지 않는 방 이름입니다.");
         iprint("존재하지 않는 방 이름입니다.(%s)\n", g_rooms[room_index].name);
+        ret = -1;
+    }if(room_index == 0){
+        send_cmd.func_num2 = FAIL;
+        strcpy(send_cmd.str1, "이미 로비입니다.");
+        iprint("이미 로비입니다.\n");
         ret = -1;
     }else{
         send_cmd.func_num2 = SUCCESS;
@@ -309,6 +349,7 @@ int cmd_room_leave(int cid){
 }
 
 int cmd_room_list(int cid){
+    dprint("CMD_ROOM_LIST\n");
     struct command_s send_cmd;
     int client_index = find_client_index_by_id(cid);
     send_cmd.func_num1 = CMD_ROOM_LIST;
@@ -320,6 +361,7 @@ int cmd_room_list(int cid){
     iprint("방 리스트 요청: %s(%d)\n", g_clients[client_index].name, cid);
     
     char room_list[BUFSIZ] = "";
+    int room_cnt = 0;
     for(int i=0; i<MAX_ROOM; i++){
         if(g_rooms[i].id < 0){
             continue;
@@ -333,6 +375,10 @@ int cmd_room_list(int cid){
             iprint("방 정보: ID(%d), Name(%s), Type(공개방)\n", g_rooms[i].id, g_rooms[i].name);
         }
         strcat(room_list, room_info);
+        room_cnt++;
+    }
+    if(room_cnt==0){
+        strcat(room_list,"방이 없습니다.. 방을 추가해주세요");
     }
     
     strncpy(send_cmd.str2, room_list, BUFSIZ-1);
@@ -341,41 +387,53 @@ int cmd_room_list(int cid){
     return 0;
 }
 
-int cmd_room_users(const char *room_name, int cid){
+int cmd_room_users(int cid){
+    dprint("CMD_ROOM_USERS\n");
     struct command_s send_cmd;
     int client_index = find_client_index_by_id(cid);
     send_cmd.func_num1 = CMD_ROOM_USERS;
-    memset(send_cmd.str1, 0, CMD_STR1_SIZE);
-    memset(send_cmd.str2, 0, BUFSIZ);
-    
-    int room_index = find_room_by_name(g_rooms, room_name);
-    if(room_index < 0){
+    if(g_clients[client_index].roomId == 0){
         send_cmd.func_num2 = FAIL;
-        strcpy(send_cmd.str1, "존재하지 않는 방 이름입니다.");
-        iprint("존재하지 않는 방 이름입니다.(%s)\n", room_name);
-        return -1;
+        strcpy(send_cmd.str1, "로비에서는 사용할 수 없는 명령입니다.");
+        iprint("로비에서는 사용할 수 없는 명령입니다.\n");
+    }else{
+        char room_name[100];
+        int room_index = find_room_by_id(g_rooms, g_clients[client_index].roomId);
+        memset(room_name, 0, 100);
+        strncpy(room_name, g_rooms[room_index].name, 100);
+        
+        memset(send_cmd.str1, 0, CMD_STR1_SIZE);
+        memset(send_cmd.str2, 0, BUFSIZ);
+        
+        if(room_index < 0){
+            send_cmd.func_num2 = FAIL;
+            strcpy(send_cmd.str1, "존재하지 않는 방 이름입니다.");
+            iprint("존재하지 않는 방 이름입니다.(%s)\n", room_name);
+            return -1;
+        }
+        
+        send_cmd.func_num2 = SUCCESS;
+        strcpy(send_cmd.str1, "방 유저 리스트입니다.");
+        
+        char user_list[BUFSIZ] = "";
+        for(int i=0; i<g_rooms[room_index].nclients; i++){
+            char user_info[100];
+            snprintf(user_info, sizeof(user_info), "User ID: %d, Name: %s\n", g_rooms[room_index].clients[i]->id, g_rooms[room_index].clients[i]->name);
+            strcat(user_list, user_info);
+        }
+        
+        strncpy(send_cmd.str2, user_list, BUFSIZ-1);
     }
-    
-    send_cmd.func_num2 = SUCCESS;
-    strcpy(send_cmd.str1, "방 유저 리스트입니다.");
-    
-    char user_list[BUFSIZ] = "";
-    for(int i=0; i<g_rooms[room_index].nclients; i++){
-        char user_info[100];
-        snprintf(user_info, sizeof(user_info), "User ID: %d, Name: %s\n", g_rooms[room_index].clients[i]->id, g_rooms[room_index].clients[i]->name);
-        strcat(user_list, user_info);
-    }
-    
-    strncpy(send_cmd.str2, user_list, BUFSIZ-1);
     
     send_command(g_clients[client_index].pipe[1], g_clients[client_index].pid, send_cmd);
     return 0;
 }
 
 int cmd_send_whisper(const char *to_name, const char *message, int cid){
+    dprint("CMD_WHISPER\n");
     struct command_s send_cmd;
     int client_index = find_client_index_by_id(cid);
-    send_cmd.func_num1 = CMD_SEND_WHISPER;
+    send_cmd.func_num1 = CMD_WHISPER;
     memset(send_cmd.str1, 0, CMD_STR1_SIZE);
     memset(send_cmd.str2, 0, BUFSIZ);
     
@@ -396,7 +454,39 @@ int cmd_send_whisper(const char *to_name, const char *message, int cid){
     return 0;
 }
 
+int cmd_help(int cid){
+    dprint("CMD_HELP\n");
+    struct command_s send_cmd;
+    int client_index = find_client_index_by_id(cid);
+    send_cmd.func_num1 = CMD_ROOM_HELP;
+    memset(send_cmd.str1, 0, CMD_STR1_SIZE);
+    memset(send_cmd.str2, 0, BUFSIZ);
+    
+    send_cmd.func_num2 = SUCCESS;
+    strcpy(send_cmd.str1, "커맨드 정보 : ");
+    
+    sprintf(send_cmd.str2, "%s",
+                            "/add room1 0321             : 채팅방 room1을 비밀번호 0321로 생성\n"
+                            "/add room2                  : 채팅방 room2를 비밀번호 없이 생성\n"
+                            "/join room1 0321            : room1 채팅방에 비밀번호 0321로 입장\n"
+                            "/join room2                 : room2 채팅방에 입장 (비밀번호 없음)\n"
+                            "/leave                      : 현재 채팅방에서 퇴장\n"
+                            "/list                       : 생성된 채팅방 목록 출력\n"
+                            "/users                      : 현재 채팅방에 있는 유저 목록 출력\n"
+                            "/rm room1 0321              : 비밀번호 0321로 room1 비밀 채팅방 삭제\n"
+                            "/rm room2                   : 비밀번호 없이 room2 공개 채팅방 삭제\n"
+                            "[일반메시지]                  : 접속 중인 채팅방에 메시지 전송\n"
+                            "!whisper 홍대오 안녕하세요~~~  : 홍대오에게 귓속말 전송\n"
+                            "/exit                       : 채팅 프로그램 종료\n"
+                            "/help                       : 사용 가능한 명령어 목록 출력\n"
+                        );
+    send_command(g_clients[client_index].pipe[1], g_clients[client_index].pid, send_cmd);
+    return 0;
+
+}
+
 int cmd_exit(int cid){
+    dprint("CMD_EXIT\n");
     struct command_s send_cmd;
     int client_index = find_client_index_by_id(cid);
     send_cmd.func_num1 = CMD_EXIT;
@@ -435,47 +525,36 @@ int command_logic(char *command){
     switch (cmd.func_num1)
     {
     case CMD_ROBBY_LOGIN:       // 로비에서 로그인 커맨드
-        dprint("CMD_ROBBY_LOGIN\n");
         ret = cmd_login(cmd.str1, cmd.str2, cmd.cid);
         break;
     case CMD_ROOM_ADD:      // 로비에서 방 추가 커맨드
-        dprint("CMD_ROOM_ADD\n");
         ret = cmd_room_add(cmd.str1, cmd.str2, cmd.cid);
         break;
     case CMD_ROOM_RM:       // 로비에서 방 제거 커맨드
-        dprint("CMD_ROOM_RM\n");
         ret = cmd_room_rm(cmd.str1, cmd.str2, cmd.cid);
         break;
     case CMD_ROOM_JOIN:     // 로비에서 방 참가 커맨드
-        dprint("CMD_ROOM_JOIN\n");
         ret = cmd_room_join(cmd.str1, cmd.str2, cmd.cid);
         break;
-    case CMD_ROOM_PASS:     // ????
-        /* code */
-        break;
     case CMD_ROOM_LEAVE:    // 방에서 로비로 나가기 커맨드
-        dprint("CMD_ROOM_LEAVE\n");
         ret = cmd_room_leave(cmd.cid);
         break;
     case CMD_ROOM_LIST:     // 로비에서 방 리스트 확인 커맨드
-        dprint("CMD_ROOM_LIST\n");
         ret = cmd_room_list(cmd.cid);
         break;
     case CMD_ROOM_USERS:    // 방에서 유저 수 확인 커맨드
-        dprint("CMD_ROOM_USERS\n");
-        ret = cmd_room_users(cmd.str1, cmd.cid);
+        ret = cmd_room_users(cmd.cid);
         break;
-    case CMD_SEND_ROOM:     // 채팅 브로드캐스팅 커맨드
-        dprint("start broadcast!!! cid(%d)\n",cmd.cid);
-        int client_index = find_client_index_by_id(cmd.cid);
+    case CMD_ROOM_SEND:     // 채팅 브로드캐스팅 커맨드
         broadcastChat(cmd);
         break;
-    case CMD_SEND_WHISPER:  // 채팅 귓속말 커맨드
-        dprint("CMD_SEND_WHISPER\n");
+    case CMD_WHISPER:       // 채팅 귓속말 커맨드
         ret = cmd_send_whisper(cmd.str1, cmd.str2, cmd.cid);
         break;
+    case CMD_ROOM_HELP:
+        ret = cmd_help(cmd.cid);
+        break;
     case CMD_EXIT:          // 클라이언트 종료 커맨드
-        dprint("CMD_EXIT\n");
         ret = cmd_exit(cmd.cid);
         break;
     default:                // 에러

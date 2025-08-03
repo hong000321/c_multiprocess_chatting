@@ -12,7 +12,7 @@ int pack_command(struct command_s cmd, char *cmd_str, int cmd_str_size){
                         CMD_ETX,
                         cmd.str2,
                         CMD_ETX);
-    vprint("cmd_str(%s)\n",cmd_str);
+    // vprint("cmd_str(%s)\n",cmd_str);
     return ret;
 }
 
@@ -28,7 +28,7 @@ int unpack_command(struct command_s *cmd, char *cmd_str){
     }
     int len = end-cmd_index;
     strncpy(tmp, cmd_index, len);
-    vprint("cid = %s\n",tmp);
+    // vprint("cid = %s\n",tmp);
     cmd->cid = atoi(tmp);
 
     // func num1 추출
@@ -39,7 +39,7 @@ int unpack_command(struct command_s *cmd, char *cmd_str){
     }
     len = end-cmd_index;
     strncpy(tmp, cmd_index, len);
-    vprint("func_num1 = %s\n",tmp);
+    // vprint("func_num1 = %s\n",tmp);
     cmd->func_num1 = atoi(tmp);
 
     // func num2 추출
@@ -50,7 +50,7 @@ int unpack_command(struct command_s *cmd, char *cmd_str){
     }
     len = end-cmd_index;
     strncpy(tmp, cmd_index, len);
-    vprint("func_num2 = %s\n",tmp);
+    // vprint("func_num2 = %s\n",tmp);
     cmd->func_num2 = atoi(tmp);
     
 
@@ -62,7 +62,7 @@ int unpack_command(struct command_s *cmd, char *cmd_str){
     }
     len = end-cmd_index;
     strncpy(cmd->str1, cmd_index, len);
-    vprint("str1 = %s\n",cmd->str1);
+    // vprint("str1 = %s\n",cmd->str1);
 
     // str2 추출
     cmd_index = end+1;
@@ -72,7 +72,7 @@ int unpack_command(struct command_s *cmd, char *cmd_str){
     }
     len = end-cmd_index;
     strncpy(cmd->str2, cmd_index, len);
-    vprint("str2 = %s\n",cmd->str2);
+    // vprint("str2 = %s\n",cmd->str2);
 
     return 0;
 }

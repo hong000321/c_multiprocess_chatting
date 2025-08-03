@@ -23,26 +23,35 @@ int update_client(struct command_s *cmd){
     dprint("update client page!!\n");
     switch (cmd->func_num1)
     {
-    case CMD_SEND_ROOM:
-        printf("%s : %s\n", cmd->str1, cmd->str2);
+    case CMD_ROOM_SEND:
+        printf("\n%s : %s\n\n", cmd->str1, cmd->str2);
         break;
     case CMD_ROOM_ADD:
-        dprint("%s\n", cmd->str1);
+        printf("\n%s: %s\n\n", cmd->str1, cmd->str2);
         break;
     case CMD_ROOM_JOIN:
-        dprint("%s\n", cmd->str1);
+        printf("\n%s: %s\n\n", cmd->str1, cmd->str2);
         break;
     case CMD_ROOM_LEAVE:
-        dprint("%s\n", cmd->str1);
+        printf("\n%s\n\n", cmd->str1);
         break;
     case CMD_ROBBY_LOGIN:
-        dprint("%s\n", cmd->str1);
+        dprint("\n%s\n\n", cmd->str1);
         break;
     case CMD_ROOM_LIST:
-        iprint("%s\n%s", cmd->str1, cmd->str2);
+        printf("\n%s\n%s\n\n", cmd->str1, cmd->str2);
+        break;
+    case CMD_ROOM_USERS:
+        printf("\n%s\n%s\n\n", cmd->str1, cmd->str2);
+        break;
+    case CMD_WHISPER:
+        printf("\n%s\n\n", cmd->str2);
+        break;
+    case CMD_ROOM_HELP:
+        printf("\n%s\n%s\n\n", cmd->str1, cmd->str2);
         break;
     case CMD_EXIT:
-        dprint("exit command\n");
+        printf("exit command\n");
         stop = 1;
         break;
     default:
@@ -66,7 +75,7 @@ void sigusr1_handler(){
         unpack_command(&cmd,cmd_str);
         update_client(&cmd);
         dprint("receivData : | fn1(%2d)  | fn2(%2d) | str1(%10s) | str2(%s)\n",cmd.func_num1, cmd.func_num2, cmd.str1, cmd.str2);
-        dprint("%10s : %s\n",cmd.str1, cmd.str2);
+        // dprint("%10s : %s\n",cmd.str1, cmd.str2);
     }
 }
 
@@ -88,7 +97,7 @@ int send_data(int sockfd, char *mesg, int buf_size){
         dprint("send_data size is zero\n");
         return 0;
     }
-    cmd.func_num1 = CMD_SEND_ROOM;
+    cmd.func_num1 = CMD_ROOM_SEND;
     char *mesg_index = mesg;
     
     strcpy(cmd.str1,"null");
@@ -96,35 +105,26 @@ int send_data(int sockfd, char *mesg, int buf_size){
         mesg_index++;
         if(!strncmp((mesg_index), "help", 4)){
             cmd.func_num1 = CMD_ROOM_HELP;
-            mesg_index+=5;
         }else if(!strncmp((mesg_index), "add", 3)){
             cmd.func_num1 = CMD_ROOM_ADD;
-            mesg_index+=4;
             arg1 = 1;
         }else if(!strncmp((mesg_index), "rm", 2)){
             cmd.func_num1 = CMD_ROOM_RM;
-            mesg_index+=3;
             arg1 = 1;
         }else if(!strncmp((mesg_index), "login", 5)){
             cmd.func_num1 = CMD_ROBBY_LOGIN;
-            mesg_index+=6;
             arg1 = 1;
         }else if(!strncmp((mesg_index), "join", 4)){
             cmd.func_num1 = CMD_ROOM_JOIN;
-            mesg_index+=5;
             arg1 = 1;
         }else if(!strncmp((mesg_index), "leave", 5)){
             cmd.func_num1 = CMD_ROOM_LEAVE;
-            mesg_index+=6;
         }else if(!strncmp((mesg_index), "list", 4)){
             cmd.func_num1 = CMD_ROOM_LIST;
-            mesg_index+=5;
         }else if(!strncmp((mesg_index), "users", 5)){
             cmd.func_num1 = CMD_ROOM_USERS;
-            mesg_index+=6;
         }else if(!strncmp((mesg_index), "exit", 4)){
             cmd.func_num1 = CMD_EXIT;
-            mesg_index+=5;
         }else{
             eprint("unkown command!!!(%s)\n",mesg);
             return -1;
@@ -132,27 +132,36 @@ int send_data(int sockfd, char *mesg, int buf_size){
     }else if(mesg[0]=='!'){
         mesg_index++;
         if(!strncmp((mesg_index), "whisper", 7)){
-            cmd.func_num1 = CMD_SEND_WHISPER;
-            mesg_index+=8;
+            cmd.func_num1 = CMD_WHISPER;
             arg1 = 1;
         }else{
             eprint("unkown command!!!(%s)\n",mesg);
             return -1;
         }
     }
+    char *end = strchr(mesg_index,' ');
+    if(end){
+        mesg_index = end+1;
+    }
     if(arg1){
         dprint("arg1 command : %s\n",mesg_index);
-        char *end = strchr(mesg_index,' ');
+        memset(cmd.str1, 0, CMD_STR1_SIZE);
+        end = strchr(mesg_index,' ');
+        if(((cmd.func_num1 == CMD_ROOM_ADD) || (cmd.func_num1 == CMD_ROOM_JOIN)) && !end){
+            strcpy(cmd.str1, mesg_index);
+            goto pack_cmd;
+        }
         if(!end){
             eprint("command error!!!\n");
             return -1;
         }
-        memset(cmd.str1, 0, CMD_STR1_SIZE);
         strncpy(cmd.str1, mesg_index, end-mesg_index);
         mesg_index = end+1;
+        strcpy(cmd.str2,mesg_index);
+    }else{
+        strcpy(cmd.str1,mesg_index);
     }
-    strcpy(cmd.str2,mesg_index);
-    
+pack_cmd:
     pack_command(cmd, cmd_str, BUFSIZ);
     if(size = send(sockfd, cmd_str, BUFSIZ, MSG_DONTWAIT)<=0){
         perror("send()");
@@ -295,7 +304,8 @@ int main(int argc, char **argv){
             ret = send_data(sockfd,mesg,BUFSIZ);
             if(ret < 0){
                 eprint("send_data() error\n");
-                // break;
+                kill(pid, SIGINT);
+                break;
             }
         }while(!stop);
         kill(pid, SIGINT);

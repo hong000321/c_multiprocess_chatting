@@ -45,20 +45,23 @@ void sigusr2_handler(){
     int n,size;
     memset(command, 0, BUFSIZ);
     if((n=read(pfd[0], command, BUFSIZ))>0){
-        dprint("sigusr2 : cmd(%s)\n",command);
         struct command_s cmd;
         memset(cmd.str1, 0, CMD_STR1_SIZE);
         memset(cmd.str2, 0, BUFSIZ);
         unpack_command(&cmd, command);
-        dprint("cid(%d), fn1(%d), fn2(%d), str1(%s), str2(%s)\n",
+        dprint("sigusr2 : cid(%d), fn1(%d), fn2(%d), str1(%s), str2(%s)\n",
                 cmd.cid, cmd.func_num1, cmd.func_num2, cmd.str1, cmd.str2);
         
         if(cmd.func_num1 == CMD_CHANGE_ID){
             g_client_id = cmd.cid;
             return;
         }
+        
         if(size = send(sockfd, command, BUFSIZ, MSG_DONTWAIT)<=0){
             perror("send()");
+        }
+        if(cmd.func_num1 == CMD_EXIT){
+            stop = 1;
         }
     }
 }
